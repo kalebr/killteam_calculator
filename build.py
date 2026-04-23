@@ -1,8 +1,8 @@
 """
 Kill Team Calculator — PDF build script (KT 2024)
 Usage:
-  python build.py                          # parse all PDFs in source/, write index.html
-  python build.py --pdf source/team.pdf    # parse a single PDF, write index.html
+  python build.py                          # parse all PDFs in source/, write killteam.html
+  python build.py --pdf source/team.pdf    # parse a single PDF, write killteam.html
   python build.py --dump                   # print extracted JSON to stdout only
 """
 
@@ -332,13 +332,13 @@ def build(pdf_paths: list[Path], template_path: Path, output_path: Path, dump: b
     output_path.write_text(output_html, encoding='utf-8')
     size_kb = output_path.stat().st_size // 1024
     print(f"\nWrote: {output_path}  ({size_kb} KB)")
-    print("Open index.html directly in any browser - no web server needed.")
+    print("Open killteam.html directly in any browser - no web server needed.")
 
 
 def main():
     root = Path(__file__).parent
     template = root / 'template.html'
-    output   = root / 'index.html'
+    output   = root / 'killteam.html'
     source   = root / 'source'
 
     parser = argparse.ArgumentParser(description='Kill Team Calculator build script')

@@ -4,7 +4,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Project Overview
 
-A Kill Team 2024 probability calculator — a tablet-friendly single-page web app. Drop GW PDF datacards into `source/`, run `build.py` to parse them into a self-contained `index.html`, then open that file directly in any browser (no web server needed).
+A Kill Team 2024 probability calculator — a tablet-friendly single-page web app. Drop GW PDF datacards into `source/`, run `build.py` to parse them into a self-contained `killteam.html`, then open that file directly in any browser (no web server needed).
 
 ## Commands
 
@@ -12,7 +12,7 @@ A Kill Team 2024 probability calculator — a tablet-friendly single-page web ap
 # One-time setup — creates .venv and installs dependencies
 uv sync
 
-# Parse all PDFs in source/ and regenerate index.html
+# Parse all PDFs in source/ and regenerate killteam.html
 uv run python build.py
 
 # Parse a single PDF
@@ -28,14 +28,14 @@ uv run python build.py --dump
 
 | File | Role |
 |------|------|
-| `template.html` | Source file — edit this, not `index.html` |
-| `index.html` | Generated output; overwritten every build |
-| `build.py` | PDF parser → injects team data into template → writes index.html |
+| `template.html` | Source file — edit this, not `killteam.html` |
+| `killteam.html` | Generated output; overwritten every build |
+| `build.py` | PDF parser → injects team data into template → writes killteam.html |
 | `source/*.pdf` | GW official datacards; add PDFs here, then rebuild |
 
 ### Data flow
 
-`source/*.pdf` → `build.py` (pdfplumber) → `TEAMS_DATA` JS object → injected into `template.html` at `/*TEAMS_DATA_PLACEHOLDER*/` → `index.html`
+`source/*.pdf` → `build.py` (pdfplumber) → `TEAMS_DATA` JS object → injected into `template.html` at `/*TEAMS_DATA_PLACEHOLDER*/` → `killteam.html`
 
 The `TEAMS_DATA` object is embedded directly in a `<script>` block so the file opens as `file://` with no server.
 
@@ -77,7 +77,7 @@ Attack sequence:
 3. Apply Rending post-roll if active
 4. DP over `max(0, DF − AP + cover)` defense dice → `(crit_saves, normal_saves)`
 5. Resolve: crit_saves cancel crit_hits first; excess crit_saves become normal saves; remaining saves cancel hits; unblocked dice deal damage
-6. Severe post-roll: if 0 crits retained, convert 1 normal hit to a crit; Devastating X adds X mortal wounds per unblocked crit
+6. Severe post-roll: if 0 crits retained, convert 1 normal hit to a crit; Devastating X fires immediately on each retained crit (even if that crit is later blocked)
 7. Sum over all attack/defense combinations weighted by their joint probability
 
 ### UI state model

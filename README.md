@@ -1,6 +1,6 @@
 # Kill Team Calculator
 
-A probability calculator for **Kill Team 2024**. Drop GW PDF datacards into `source/`, run one command, and open `index.html` in any browser — no server required.
+A probability calculator for **Kill Team 2024**. Drop GW PDF datacards into `source/`, run one command, and open `killteam.html` in any browser — no server required.
 
 ## Features
 
@@ -28,13 +28,11 @@ uv sync
 
 ### Add datacards
 
-Copy GW official PDF datacards into `source/`:
+Copy GW official PDF rules from Warhammer Community into `source/`:
 
 ```
 source/
-  Angels_of_Death.pdf
-  Corsair Voidscarred.pdf
-  HotA.pdf
+
 ```
 
 ### Build
@@ -43,25 +41,25 @@ source/
 uv run python build.py
 ```
 
-This parses every PDF in `source/` and writes a self-contained `index.html`.
+This parses every PDF in `source/` and writes a self-contained `killteam.html`.
 
 ```bash
 # Build a single PDF
 uv run python build.py --pdf source/MyTeam.pdf
 
-# Print extracted JSON without writing index.html (useful for debugging)
+# Print extracted JSON without writing killteam.html (useful for debugging)
 uv run python build.py --dump
 ```
 
 ### Open
 
-Double-click `index.html` or open it with `file://` in any browser. No web server needed.
+Double-click `killteam.html` or open it with `file://` in any browser. No web server needed.
 
 ## How it works
 
 ### PDF parsing
 
-`build.py` uses [pdfplumber](https://github.com/jsvine/pdfplumber) to extract operative stats and weapon profiles from GW 2024 datacards. The parsed data is serialized as a JavaScript object and injected into `template.html` at the `/*TEAMS_DATA_PLACEHOLDER*/` marker, producing `index.html`.
+`build.py` uses [pdfplumber](https://github.com/jsvine/pdfplumber) to extract operative stats and weapon profiles from GW 2024 datacards. The parsed data is serialized as a JavaScript object and injected into `template.html` at the `/*TEAMS_DATA_PLACEHOLDER*/` marker, producing `killteam.html`.
 
 GW 2024 datacard block format (one block per operative):
 
@@ -104,7 +102,7 @@ The ranged attack engine (`computeAttack`) and fight engine (`computeFight`) bot
 | Rending | If any crit retained, convert one normal hit to a crit |
 | Severe | If no crits retained, convert one normal hit to a crit |
 | Lethal 5+/4+ | Lowers the crit threshold |
-| Devastating X | +X mortal wounds per unblocked crit |
+| Devastating X | +X mortal wounds per retained crit, even if that crit is blocked or saved |
 | Torrent | Treat BS as 2+ (near-automatic hits) |
 | Brutal | Opponent may only block with crit dice |
 | Piercing X | Removes X defense dice (ranged only) |
@@ -132,8 +130,8 @@ When an operative has the Multiblock special rule, one die can cancel two oppone
 
 | File | Role |
 |------|------|
-| `template.html` | Source — edit this, not `index.html` |
-| `index.html` | Generated output; overwritten on every build |
+| `template.html` | Source — edit this, not `killteam.html` |
+| `killteam.html` | Generated output; overwritten on every build |
 | `build.py` | PDF parser + injector |
 | `pyproject.toml` | uv project manifest |
 | `uv.lock` | Locked dependency versions |

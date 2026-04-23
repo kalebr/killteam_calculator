@@ -444,9 +444,22 @@
 
     <div id="def-stat-row" class="stat-row" style="margin-top:8px;"></div>
 
+    <div id="common-def-controls">
+      <div class="section-label">Modifiers</div>
+      <div class="toggle-grid">
+        <label class="toggle-label defender-toggle" id="lbl-jas-normal">
+          <input type="checkbox" id="def-jas-normal"> Just a Scratch Normal (ignore 1 hit)
+        </label>
+        <label class="toggle-label defender-toggle" id="lbl-jas-crit">
+          <input type="checkbox" id="def-jas-crit"> Just a Scratch Crit (ignore 1 hit or crit)
+        </label>
+      </div>
+    </div>
+
     <div id="def-fight-controls" style="display:none">
+      <div class="section-label">Melee</div>
       <div class="field">
-        <label>Weapon (Melee)</label>
+        <label>Weapon</label>
         <select id="def-weapon"><option value="">— Select weapon —</option></select>
       </div>
       <div id="def-weapon-info"></div>
@@ -466,22 +479,15 @@
     </div>
 
     <div id="ranged-def-controls">
+      <div class="section-label">Ranged</div>
       <div class="section-label">Cover Saves: <span id="cover-label">0</span></div>
       <input type="range" id="cover-slider" min="0" max="3" value="0" class="accurate-slider">
-
-      <div class="section-label">Modifiers</div>
-      <div class="toggle-grid">
+      <div class="toggle-grid" style="margin-top:8px;">
         <label class="toggle-label defender-toggle" id="lbl-obscured">
           <input type="checkbox" id="def-obscured"> Obscured (no crits, discard 1 success)
         </label>
         <label class="toggle-label defender-toggle" id="lbl-reroll-def">
           <input type="checkbox" id="def-reroll"> Reroll 1 failed def die
-        </label>
-        <label class="toggle-label defender-toggle" id="lbl-jas-normal">
-          <input type="checkbox" id="def-jas-normal"> Just a Scratch Normal (ignore 1 hit)
-        </label>
-        <label class="toggle-label defender-toggle" id="lbl-jas-crit">
-          <input type="checkbox" id="def-jas-crit"> Just a Scratch Crit (ignore 1 hit or crit)
         </label>
       </div>
     </div>
@@ -759,14 +765,13 @@ function computeAttack(config) {
           let effCrits = unblockedCrits;
           if (jasNormal) effHits = Math.max(0, effHits - 1);
           if (jasCrit) {
-            // Defender ignores whichever die deals more damage (optimal play)
-            const critDmg = critD + mwVal;
-            if (effCrits > 0 && critDmg >= d) effCrits--;
-            else if (effHits  > 0)            effHits--;
-            else if (effCrits > 0)            effCrits--;
+            // JaS ignores base crit damage only — Devastating already fired at retention
+            if (effCrits > 0 && critD >= d) effCrits--;
+            else if (effHits  > 0)          effHits--;
+            else if (effCrits > 0)          effCrits--;
           }
           let dmg = effHits * d + effCrits * critD;
-          if (mwVal) dmg += effCrits * mwVal;
+          if (mwVal) dmg += ac * mwVal; // Devastating fires on all retained crits, even saved ones
 
           const clampedDmg = Math.min(dmg, maxDmg);
           damageDist[clampedDmg] += pAtk * pDef;
@@ -1071,7 +1076,8 @@ function computeFight(config) {
     a, skill, d, critD, rules,
     defA, defSkill, defD, defCritD, defRules,
     atkStrat, defStrat, atkMultiBlock, defMultiBlock,
-    defW, atkW
+    defW, atkW,
+    jasNormal = false, jasCrit = false
   } = config;
 
   const mwVal     = (rules.find(r => r.startsWith('mw')) || '').replace('mw','') | 0;
@@ -1115,7 +1121,8 @@ function computeFight(config) {
     if (!isAtkTurn && dc === 0 && dh === 0) { const r = resolve(ac, ah, dc, dh, true,  atkHp, defHp); memo.set(key, r); return r; }
 
     const strat         = isAtkTurn ? atkStrat    : defStrat;
-    const myCritDmgFull = isAtkTurn ? (critD + mwVal) : (defCritD + defMwVal);
+    // Devastating already fires upfront at retention; strikes deal base crit damage only
+    const myCritDmgBase = isAtkTurn ? critD : defCritD;
     const myMultiBlk    = isAtkTurn ? atkMultiBlock : defMultiBlock;
     // Brutal: if opponent has Brutal, I can only block with crits
     const oppBrutal     = isAtkTurn ? defBrutal   : atkBrutal;
@@ -1129,8 +1136,8 @@ function computeFight(config) {
       let imm = [0, 0];
       if (isAtkTurn) {
         switch (type) {
-          case 'sC':    nac--; ndefHp -= myCritDmgFull; imm = [myCritDmgFull, 0]; break;
-          case 'sN':    nah--; ndefHp -= d;              imm = [d, 0];             break;
+          case 'sC':    nac--; ndefHp -= myCritDmgBase; imm = [myCritDmgBase, 0]; break;
+          case 'sN':    nah--; ndefHp -= d;             imm = [d, 0];             break;
           case 'bCC':   nac--; ndc--;                                               break;
           case 'bCN':   nac--; ndh--;                                               break;
           case 'bNN':   nah--; ndh--;                                               break;
@@ -1141,7 +1148,7 @@ function computeFight(config) {
         }
       } else {
         switch (type) {
-          case 'sC':    ndc--; natkHp -= myCritDmgFull; imm = [0, myCritDmgFull]; break;
+          case 'sC':    ndc--; natkHp -= myCritDmgBase; imm = [0, myCritDmgBase]; break;
           case 'sN':    ndh--; natkHp -= defD;           imm = [0, defD];          break;
           case 'bCC':   ndc--; nac--;                                               break;
           case 'bCN':   ndc--; nah--;                                               break;
@@ -1211,7 +1218,15 @@ function computeFight(config) {
           const pDf = defRolled[dc] ? defRolled[dc][dh] : 0;
           if (!pDf) continue;
           const p = pA * pDf;
-          const [dmgD, dmgA] = resolve(ac, ah, dc, dh, true, atkW, defW);
+          // Devastating fires immediately on crit retention, before any blocking
+          const devastD = ac * mwVal;
+          const devastA = dc * defMwVal;
+          const [actD, actA] = resolve(ac, ah, dc, dh, true, atkW - devastA, defW - devastD);
+          let dmgD = devastD + actD;
+          const dmgA = devastA + actA;
+          // Just a Scratch: defender ignores one die's worth of damage
+          if (jasNormal && dmgD > 0) dmgD = Math.max(0, dmgD - d);
+          if (jasCrit   && dmgD > 0) dmgD = Math.max(0, dmgD - Math.max(d, critD));
           expD += p * dmgD;
           expA += p * dmgA;
           if (dmgD <= maxD) dDist[dmgD] += p;
@@ -1507,7 +1522,8 @@ function recalculate() {
       defA: dw.a, defSkill: dw.skill, defD: dw.d, defCritD: dw.crit_d, defRules,
       atkStrat: state.atkFightStrat, defStrat: state.defFightStrat,
       atkMultiBlock: state.atkMultiBlock, defMultiBlock: state.defMultiBlock,
-      defW: def.w, atkW: atk ? atk.w : 12
+      defW: def.w, atkW: atk ? atk.w : 12,
+      jasNormal: state.jasNormal, jasCrit: state.jasCrit
     };
     const result = computeFight(config);
     renderFightResults(result, def.w, atk ? atk.w : 12);
