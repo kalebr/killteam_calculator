@@ -1,0 +1,9 @@
+[project]
+name = "killteam-calculator"
+version = "0.1.0"
+description = "Kill Team 2024 probability calculator"
+requires-python = ">=3.10"
+dependencies = [
+    "pdfplumber>=0.10.0",
+]
+

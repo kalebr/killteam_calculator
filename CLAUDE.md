@@ -4,25 +4,23 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Project Overview
 
-A Kill Team (2024 Void War edition) probability calculator — a tablet-friendly single-page web app. Drop GW PDF datacards into `source/`, run `build.py` to parse them into a self-contained `index.html`, then open that file directly in any browser (no web server needed).
+A Kill Team 2024 probability calculator — a tablet-friendly single-page web app. Drop GW PDF datacards into `source/`, run `build.py` to parse them into a self-contained `index.html`, then open that file directly in any browser (no web server needed).
 
 ## Commands
 
 ```bash
-# One-time dependency install
-pip install pdfplumber
+# One-time setup — creates .venv and installs dependencies
+uv sync
 
 # Parse all PDFs in source/ and regenerate index.html
-python3 build.py
+uv run python build.py
 
 # Parse a single PDF
-python3 build.py --pdf source/MyTeam.pdf
+uv run python build.py --pdf source/MyTeam.pdf
 
 # Dump parsed JSON to stdout (useful for debugging)
-python3 build.py --dump
+uv run python build.py --dump
 ```
-
-The Python executable on this machine is at `~/.local/bin/python3.14.exe`.
 
 ## Architecture
 
@@ -79,7 +77,7 @@ Attack sequence:
 3. Apply Rending post-roll if active
 4. DP over `max(0, DF − AP + cover)` defense dice → `(crit_saves, normal_saves)`
 5. Resolve: crit_saves cancel crit_hits first; excess crit_saves become normal saves; remaining saves cancel hits; unblocked dice deal damage
-6. Severe adds +1 per unblocked crit; Devastating X adds X per unblocked crit
+6. Severe post-roll: if 0 crits retained, convert 1 normal hit to a crit; Devastating X adds X mortal wounds per unblocked crit
 7. Sum over all attack/defense combinations weighted by their joint probability
 
 ### UI state model

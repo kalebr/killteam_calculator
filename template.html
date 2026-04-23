@@ -368,7 +368,7 @@
 <header>
   <div>
     <h1>Kill Team Calculator</h1>
-    <div class="subtitle">Void War Edition &mdash; live probability engine</div>
+    <div class="subtitle">Kill Team 2024 &mdash; live probability engine</div>
   </div>
 </header>
 
@@ -413,6 +413,20 @@
       <!-- populated by JS -->
     </div>
 
+    <div id="atk-fight-controls" style="display:none">
+      <div class="section-label">Fight Strategy</div>
+      <div class="field">
+        <select id="atk-fight-strat">
+          <option value="allAttack">All Attack — always strike</option>
+          <option value="minimizeDamage">Minimize Damage — prioritize blocking</option>
+          <option value="optimal" selected>Optimal — best cost/benefit</option>
+        </select>
+      </div>
+      <label class="toggle-label" id="lbl-atk-multiblock">
+        <input type="checkbox" id="atk-multiblock"> Multi-block (1 crit blocks 2 opp dice)
+      </label>
+    </div>
+
   </div>
 
   <!-- DEFENDER PANEL -->
@@ -430,23 +444,46 @@
 
     <div id="def-stat-row" class="stat-row" style="margin-top:8px;"></div>
 
-    <div class="section-label">Cover Saves: <span id="cover-label">0</span></div>
-    <input type="range" id="cover-slider" min="0" max="3" value="0" class="accurate-slider">
+    <div id="def-fight-controls" style="display:none">
+      <div class="field">
+        <label>Weapon (Melee)</label>
+        <select id="def-weapon"><option value="">— Select weapon —</option></select>
+      </div>
+      <div id="def-weapon-info"></div>
+      <div id="def-weapon-rules"></div>
+      <div class="toggle-grid" id="def-rule-overrides"></div>
+      <div class="section-label">Fight Strategy</div>
+      <div class="field">
+        <select id="def-fight-strat">
+          <option value="allAttack">All Attack — always strike</option>
+          <option value="minimizeDamage">Minimize Damage — prioritize blocking</option>
+          <option value="optimal" selected>Optimal — best cost/benefit</option>
+        </select>
+      </div>
+      <label class="toggle-label defender-toggle" id="lbl-def-multiblock">
+        <input type="checkbox" id="def-multiblock"> Multi-block (1 crit blocks 2 opp dice)
+      </label>
+    </div>
 
-    <div class="section-label">Modifiers</div>
-    <div class="toggle-grid">
-      <label class="toggle-label defender-toggle" id="lbl-obscured">
-        <input type="checkbox" id="def-obscured"> Obscured (no crits, discard 1 success)
-      </label>
-      <label class="toggle-label defender-toggle" id="lbl-reroll-def">
-        <input type="checkbox" id="def-reroll"> Reroll 1 failed def die
-      </label>
-      <label class="toggle-label defender-toggle" id="lbl-jas-normal">
-        <input type="checkbox" id="def-jas-normal"> Just a Scratch Normal (ignore 1 hit)
-      </label>
-      <label class="toggle-label defender-toggle" id="lbl-jas-crit">
-        <input type="checkbox" id="def-jas-crit"> Just a Scratch Crit (ignore 1 hit or crit)
-      </label>
+    <div id="ranged-def-controls">
+      <div class="section-label">Cover Saves: <span id="cover-label">0</span></div>
+      <input type="range" id="cover-slider" min="0" max="3" value="0" class="accurate-slider">
+
+      <div class="section-label">Modifiers</div>
+      <div class="toggle-grid">
+        <label class="toggle-label defender-toggle" id="lbl-obscured">
+          <input type="checkbox" id="def-obscured"> Obscured (no crits, discard 1 success)
+        </label>
+        <label class="toggle-label defender-toggle" id="lbl-reroll-def">
+          <input type="checkbox" id="def-reroll"> Reroll 1 failed def die
+        </label>
+        <label class="toggle-label defender-toggle" id="lbl-jas-normal">
+          <input type="checkbox" id="def-jas-normal"> Just a Scratch Normal (ignore 1 hit)
+        </label>
+        <label class="toggle-label defender-toggle" id="lbl-jas-crit">
+          <input type="checkbox" id="def-jas-crit"> Just a Scratch Crit (ignore 1 hit or crit)
+        </label>
+      </div>
     </div>
 
   </div>
@@ -537,6 +574,24 @@ function defDist(n, pCritSave, pSave, pNoSave) {
   return rollDist(n, pCritSave, pSave, pNoSave);
 }
 
+
+function applySevere(dist, maxN) {
+  // Severe: if zero crits retained, convert one normal success to a crit success.
+  const out = Array.from({ length: maxN + 1 }, () => new Float64Array(maxN + 1));
+  for (let c = 0; c <= maxN; c++) {
+    if (!dist[c]) continue;
+    for (let h = 0; h <= maxN - c; h++) {
+      const p = dist[c][h];
+      if (!p) continue;
+      if (c === 0 && h > 0) {
+        out[1][h - 1] += p;
+      } else {
+        out[c][h] += p;
+      }
+    }
+  }
+  return out;
+}
 
 function applyRending(atkDist, maxN) {
   // Rending: for each crit hit retained, convert one hit to a crit
@@ -663,6 +718,7 @@ function computeAttack(config) {
       }
     }
     if (rules.includes('rending')) atkDist = applyRending(atkDist, a);
+    if (rules.includes('severe'))  atkDist = applySevere(atkDist, a);
   }
 
   const dDist = rerollDefDie
@@ -673,7 +729,7 @@ function computeAttack(config) {
   // Max possible damage (obscured: no crits, so cap at hit damage only)
   const maxDmg = obscured
     ? a * d
-    : a * critD + (rules.includes('severe') ? a : 0) + (mwVal ? a * mwVal : 0);
+    : a * critD + (mwVal ? a * mwVal : 0);
   const damageDist = new Float64Array(maxDmg + 1);
 
   for (let ac = 0; ac <= a; ac++) {
@@ -704,13 +760,12 @@ function computeAttack(config) {
           if (jasNormal) effHits = Math.max(0, effHits - 1);
           if (jasCrit) {
             // Defender ignores whichever die deals more damage (optimal play)
-            const critDmg = critD + (rules.includes('severe') ? 1 : 0) + mwVal;
+            const critDmg = critD + mwVal;
             if (effCrits > 0 && critDmg >= d) effCrits--;
             else if (effHits  > 0)            effHits--;
             else if (effCrits > 0)            effCrits--;
           }
           let dmg = effHits * d + effCrits * critD;
-          if (rules.includes('severe')) dmg += effCrits;
           if (mwVal) dmg += effCrits * mwVal;
 
           const clampedDmg = Math.min(dmg, maxDmg);
@@ -763,14 +818,18 @@ function computeAttack(config) {
 
 const state = {
   atkTeam: null, atkOp: null, atkWeapon: null,
-  defTeam: null, defOp: null,
+  defTeam: null, defOp: null, defWeapon: null,
   coverSaves: 0, obscured: false, rerollDefDie: false,
   jasNormal: false, jasCrit: false,
   accurate: 0,
-  manualRules: new Set()
+  atkFightStrat: 'optimal', defFightStrat: 'optimal',
+  atkMultiBlock: false, defMultiBlock: false,
+  manualRules: new Set(), defManualRules: new Set()
 };
 
 let chartInstance = null;
+let fightTakenChartInstance = null;
+let fightSurvivalChartInstance = null;
 
 // ─────────────────────────────────────────────────
 // HELPERS
@@ -781,7 +840,9 @@ function getTeams() {
 }
 
 function teamList() {
-  return Object.entries(getTeams()).map(([id, t]) => ({ id, name: t.name }))
+  return Object.entries(getTeams())
+    .filter(([, t]) => t.operatives && t.operatives.length > 0)
+    .map(([id, t]) => ({ id, name: t.name }))
     .sort((a, b) => a.name.localeCompare(b.name));
 }
 
@@ -817,6 +878,17 @@ function isDamageRule(r) {
 }
 
 const INFO_RULES = ['indirect','stun','heavy','saturate','silent','hot','shock','seek','fight_first','fight_last'];
+// Melee-relevant rules only (no piercing, no torrent)
+const DEF_MELEE_TOGGLES = [
+  { id: 'ceaseless',  label: 'Ceaseless' },
+  { id: 'relentless', label: 'Relentless' },
+  { id: 'balanced',   label: 'Balanced' },
+  { id: 'rending',    label: 'Rending' },
+  { id: 'severe',     label: 'Severe' },
+  { id: 'lethal5',    label: 'Lethal 5+' },
+  { id: 'lethal4',    label: 'Lethal 4+' },
+  { id: 'brutal',     label: 'Brutal' },
+];
 const MANUAL_TOGGLES = [
   { id: 'ceaseless',  label: 'Ceaseless' },
   { id: 'relentless', label: 'Relentless' },
@@ -888,7 +960,8 @@ function renderWeaponInfo(w) {
 function renderWeaponRules(w) {
   const el = document.getElementById('atk-weapon-rules');
   if (!w || !w.rules || w.rules.length === 0) { el.innerHTML = ''; return; }
-  const dmgTags = w.rules.filter(r => isDamageRule(r))
+  const isMelee = w.type !== 'ranged';
+  const dmgTags = w.rules.filter(r => isDamageRule(r) && !(isMelee && r.startsWith('ap')))
     .map(r => `<span class="rule-tag">${ruleLabel(r)}</span>`).join('');
   const infoTags = w.rules.filter(r => INFO_RULES.includes(r))
     .map(r => `<span class="rule-tag info">${ruleLabel(r)}</span>`).join('');
@@ -898,9 +971,11 @@ function renderWeaponRules(w) {
 function renderManualToggles(w) {
   const el = document.getElementById('atk-rule-overrides');
   const weaponRules = w ? (w.rules || []) : [];
+  const isMelee = w && w.type !== 'ranged';
   el.innerHTML = '';
   MANUAL_TOGGLES.forEach(({ id, label }) => {
-    if (weaponRules.includes(id)) return; // already on weapon, no override needed
+    if (weaponRules.includes(id)) return;
+    if (isMelee && id.startsWith('ap')) return; // piercing doesn't apply to melee
     const lbl = document.createElement('label');
     lbl.className = 'toggle-label' + (state.manualRules.has(id) ? ' active' : '');
     lbl.id = `manual-toggle-${id}`;
@@ -920,10 +995,58 @@ function renderManualToggles(w) {
 function renderDefStats(op) {
   const el = document.getElementById('def-stat-row');
   if (!op) { el.innerHTML = ''; return; }
+  const w = state.atkWeapon ? getWeapon(state.atkTeam, state.atkOp, state.atkWeapon) : null;
+  const isFight = w && w.type !== 'ranged';
+  el.innerHTML = isFight
+    ? `<div class="stat-chip">W <span>${op.w}</span></div>`
+    : `<div class="stat-chip">DF <span>${op.df}</span></div>
+       <div class="stat-chip">SV <span>${op.sv}+</span></div>
+       <div class="stat-chip">W <span>${op.w}</span></div>`;
+}
+
+function renderDefWeaponInfo(w) {
+  const el = document.getElementById('def-weapon-info');
+  if (!w) { el.innerHTML = ''; return; }
   el.innerHTML = `
-    <div class="stat-chip">DF <span>${op.df}</span></div>
-    <div class="stat-chip">SV <span>${op.sv}+</span></div>
-    <div class="stat-chip">W <span>${op.w}</span></div>`;
+    <div class="weapon-info">
+      <div class="weapon-name">${w.name}</div>
+      <span class="weapon-stat">A <b>${w.a}</b></span>
+      <span class="weapon-stat">WS <b>${w.skill}+</b></span>
+      <span class="weapon-stat">D <b>${w.d}</b></span>
+      <span class="weapon-stat">Crit <b>${w.crit_d}</b></span>
+    </div>`;
+}
+
+function renderDefWeaponRules(w) {
+  const el = document.getElementById('def-weapon-rules');
+  if (!w || !w.rules || w.rules.length === 0) { el.innerHTML = ''; return; }
+  const dmgTags  = w.rules.filter(r => isDamageRule(r) && !r.startsWith('ap'))
+    .map(r => `<span class="rule-tag">${ruleLabel(r)}</span>`).join('');
+  const infoTags = w.rules.filter(r => INFO_RULES.includes(r))
+    .map(r => `<span class="rule-tag info">${ruleLabel(r)}</span>`).join('');
+  el.innerHTML = `<div class="rules-row" style="margin-bottom:8px;">${dmgTags}${infoTags}</div>`;
+}
+
+function renderDefManualToggles(w) {
+  const el = document.getElementById('def-rule-overrides');
+  const weaponRules = w ? (w.rules || []) : [];
+  el.innerHTML = '';
+  DEF_MELEE_TOGGLES.forEach(({ id, label }) => {
+    if (weaponRules.includes(id)) return;
+    const lbl = document.createElement('label');
+    lbl.className = 'toggle-label defender-toggle' + (state.defManualRules.has(id) ? ' active' : '');
+    lbl.id = `def-manual-toggle-${id}`;
+    const cb = document.createElement('input');
+    cb.type = 'checkbox'; cb.checked = state.defManualRules.has(id);
+    cb.addEventListener('change', () => {
+      if (cb.checked) state.defManualRules.add(id); else state.defManualRules.delete(id);
+      lbl.className = 'toggle-label defender-toggle' + (cb.checked ? ' active' : '');
+      recalculate();
+    });
+    lbl.appendChild(cb);
+    lbl.appendChild(document.createTextNode(label));
+    el.appendChild(lbl);
+  });
 }
 
 
@@ -937,6 +1060,170 @@ function collectActiveRules() {
 function collectDefModifiers() {
   return { addDefDie: 0, rerollDefDie: state.rerollDefDie,
            jasNormal: state.jasNormal, jasCrit: state.jasCrit };
+}
+
+// ─────────────────────────────────────────────────
+// FIGHT ENGINE
+// ─────────────────────────────────────────────────
+
+function computeFight(config) {
+  const {
+    a, skill, d, critD, rules,
+    defA, defSkill, defD, defCritD, defRules,
+    atkStrat, defStrat, atkMultiBlock, defMultiBlock,
+    defW, atkW
+  } = config;
+
+  const mwVal     = (rules.find(r => r.startsWith('mw')) || '').replace('mw','') | 0;
+  const defMwVal  = (defRules.find(r => r.startsWith('mw')) || '').replace('mw','') | 0;
+  const atkBrutal = rules.includes('brutal');
+  const defBrutal = defRules.includes('brutal');
+
+  // Per-die probs for each side (Ceaseless / Relentless handled here)
+  let { pCrit: apC, pHit: apH, pMiss: apM } = dieProbsForAttack(skill, rules);
+  let { pCrit: dpC, pHit: dpH, pMiss: dpM } = dieProbsForAttack(defSkill, defRules);
+
+  // Build attack roll distributions (Balanced = pool-level, same as shoot)
+  function buildDist(n, pc, ph, pm, ruleSet) {
+    if (ruleSet.includes('balanced') && n > 0) {
+      const epC = pc + pm * pc, epH = ph + pm * ph, epM = pm * pm;
+      return convolveAtk(rollDist(n - 1, pc, ph, pm), rollDist(1, epC, epH, epM), n);
+    }
+    return rollDist(n, pc, ph, pm);
+  }
+
+  let atkRolled = buildDist(a, apC, apH, apM, rules);
+  let defRolled = buildDist(defA, dpC, dpH, dpM, defRules);
+
+  // Apply post-roll conversions
+  if (rules.includes('rending'))    atkRolled = applyRending(atkRolled, a);
+  if (defRules.includes('rending')) defRolled = applyRending(defRolled, defA);
+  if (rules.includes('severe'))     atkRolled = applySevere(atkRolled, a);
+  if (defRules.includes('severe'))  defRolled = applySevere(defRolled, defA);
+
+  // Fight resolution DP — returns [dmgToDefender, dmgToAttacker]
+  // HP params track remaining wounds; when a side hits 0 the fight ends immediately.
+  const memo = new Map();
+
+  function resolve(ac, ah, dc, dh, isAtkTurn, atkHp, defHp) {
+    if (atkHp <= 0 || defHp <= 0) return [0, 0];
+    if (ac === 0 && ah === 0 && dc === 0 && dh === 0) return [0, 0];
+    const key = `${ac},${ah},${dc},${dh},${isAtkTurn ? 1 : 0},${atkHp},${defHp}`;
+    if (memo.has(key)) return memo.get(key);
+
+    if (isAtkTurn && ac === 0 && ah === 0) { const r = resolve(ac, ah, dc, dh, false, atkHp, defHp); memo.set(key, r); return r; }
+    if (!isAtkTurn && dc === 0 && dh === 0) { const r = resolve(ac, ah, dc, dh, true,  atkHp, defHp); memo.set(key, r); return r; }
+
+    const strat         = isAtkTurn ? atkStrat    : defStrat;
+    const myCritDmgFull = isAtkTurn ? (critD + mwVal) : (defCritD + defMwVal);
+    const myMultiBlk    = isAtkTurn ? atkMultiBlock : defMultiBlock;
+    // Brutal: if opponent has Brutal, I can only block with crits
+    const oppBrutal     = isAtkTurn ? defBrutal   : atkBrutal;
+
+    const myC  = isAtkTurn ? ac : dc,  myH  = isAtkTurn ? ah : dh;
+    const oppC = isAtkTurn ? dc : ac,  oppH = isAtkTurn ? dh : ah;
+
+    function act(type) {
+      let [nac, nah, ndc, ndh] = [ac, ah, dc, dh];
+      let natkHp = atkHp, ndefHp = defHp;
+      let imm = [0, 0];
+      if (isAtkTurn) {
+        switch (type) {
+          case 'sC':    nac--; ndefHp -= myCritDmgFull; imm = [myCritDmgFull, 0]; break;
+          case 'sN':    nah--; ndefHp -= d;              imm = [d, 0];             break;
+          case 'bCC':   nac--; ndc--;                                               break;
+          case 'bCN':   nac--; ndh--;                                               break;
+          case 'bNN':   nah--; ndh--;                                               break;
+          case 'mbNN':  nah--; ndh = Math.max(0, ndh - 2);                          break; // normal blocks 2 normals
+          case 'mbCC':  nac--; ndc = Math.max(0, ndc - 2);                          break; // crit blocks 2 crits
+          case 'mbCN':  nac--; ndc--; ndh--;                                        break; // crit blocks crit+normal
+          case 'mbC2N': nac--; ndh = Math.max(0, ndh - 2);                          break; // crit blocks 2 normals
+        }
+      } else {
+        switch (type) {
+          case 'sC':    ndc--; natkHp -= myCritDmgFull; imm = [0, myCritDmgFull]; break;
+          case 'sN':    ndh--; natkHp -= defD;           imm = [0, defD];          break;
+          case 'bCC':   ndc--; nac--;                                               break;
+          case 'bCN':   ndc--; nah--;                                               break;
+          case 'bNN':   ndh--; nah--;                                               break;
+          case 'mbNN':  ndh--; nah = Math.max(0, nah - 2);                          break;
+          case 'mbCC':  ndc--; nac = Math.max(0, nac - 2);                          break;
+          case 'mbCN':  ndc--; nac--; nah--;                                        break;
+          case 'mbC2N': ndc--; nah = Math.max(0, nah - 2);                          break;
+        }
+      }
+      const [fd, fa] = resolve(nac, nah, ndc, ndh, !isAtkTurn, natkHp, ndefHp);
+      return [imm[0] + fd, imm[1] + fa];
+    }
+
+    // Build list of possible actions
+    const p = [];
+    if (myC > 0) p.push('sC');
+    if (myH > 0) p.push('sN');
+    if (myC > 0 && oppC > 0) p.push('bCC');
+    if (myC > 0 && oppH > 0) p.push('bCN');
+    if (myH > 0 && oppH > 0 && !oppBrutal) p.push('bNN');
+    if (myMultiBlk) {
+      if (myH > 0 && oppH >= 2 && !oppBrutal) p.push('mbNN');  // normal blocks 2 normals
+      if (myC > 0) {
+        if (oppC >= 2)              p.push('mbCC');              // crit blocks 2 crits
+        if (oppC >= 1 && oppH >= 1) p.push('mbCN');             // crit blocks crit+normal
+        if (oppH >= 2)              p.push('mbC2N');             // crit blocks 2 normals
+      }
+    }
+
+    let chosen;
+    if (strat === 'allAttack') {
+      chosen = myC > 0 ? 'sC' : 'sN';
+    } else if (strat === 'minimizeDamage') {
+      // Block opponent's dice greedily; prefer crits over normals
+      chosen = p.find(t => t === 'mbCC') || p.find(t => t === 'mbCN') ||
+               p.find(t => t === 'bCC')  || p.find(t => t === 'mbNN') ||
+               p.find(t => t === 'bNN')  || p.find(t => t === 'bCN')  ||
+               (myC > 0 ? 'sC' : 'sN');
+    } else { // optimal
+      let best = p[0], bestVal = -Infinity;
+      for (const t of p) {
+        const [td, ta] = act(t);
+        const val = isAtkTurn ? (td - ta) : (ta - td);
+        if (val > bestVal) { bestVal = val; best = t; }
+      }
+      chosen = best;
+    }
+
+    const result = act(chosen);
+    memo.set(key, result);
+    return result;
+  }
+
+  const maxD = a * (critD + mwVal);
+  const maxA = defA * (defCritD + defMwVal);
+  const dDist = new Float64Array(maxD + 1);
+  const aDist = new Float64Array(maxA + 1);
+  let expD = 0, expA = 0;
+
+  for (let ac = 0; ac <= a; ac++) {
+    for (let ah = 0; ah <= a - ac; ah++) {
+      const pA = atkRolled[ac] ? atkRolled[ac][ah] : 0;
+      if (!pA) continue;
+      for (let dc = 0; dc <= defA; dc++) {
+        for (let dh = 0; dh <= defA - dc; dh++) {
+          const pDf = defRolled[dc] ? defRolled[dc][dh] : 0;
+          if (!pDf) continue;
+          const p = pA * pDf;
+          const [dmgD, dmgA] = resolve(ac, ah, dc, dh, true, atkW, defW);
+          expD += p * dmgD;
+          expA += p * dmgA;
+          if (dmgD <= maxD) dDist[dmgD] += p;
+          if (dmgA <= maxA) aDist[dmgA] += p;
+        }
+      }
+    }
+  }
+
+  const killDefP = Array.from(dDist).slice(defW).reduce((s, p) => s + p, 0);
+  const killAtkP = Array.from(aDist).slice(atkW).reduce((s, p) => s + p, 0);
+  return { atkExpDmg: expD, defExpDmg: expA, dDist, aDist, killDefProb: killDefP, killAtkProb: killAtkP };
 }
 
 // ─────────────────────────────────────────────────
@@ -983,6 +1270,108 @@ function renderResults(result, defenderW) {
     </div>`;
 
   renderChart(result.distribution, defenderW);
+}
+
+function renderFightResults(result, defW, atkW) {
+  if (chartInstance)              { chartInstance.destroy();              chartInstance = null; }
+  if (survivalChartInstance)      { survivalChartInstance.destroy();      survivalChartInstance = null; }
+  if (fightTakenChartInstance)    { fightTakenChartInstance.destroy();    fightTakenChartInstance = null; }
+  if (fightSurvivalChartInstance) { fightSurvivalChartInstance.destroy(); fightSurvivalChartInstance = null; }
+
+  document.getElementById('results-summary').innerHTML = `
+    <div class="results-header">
+      <div class="result-card">
+        <div class="value">${result.atkExpDmg.toFixed(1)}</div>
+        <div class="result-label">Avg Dmg Dealt</div>
+      </div>
+      <div class="result-card kill">
+        <div class="value">${Math.round(result.killDefProb * 100)}%</div>
+        <div class="result-label">Kill Chance</div>
+      </div>
+      <div class="result-card" style="border-color:var(--crit)">
+        <div class="value" style="color:var(--crit)">${result.defExpDmg.toFixed(1)}</div>
+        <div class="result-label">Avg Dmg Taken</div>
+      </div>
+      <div class="result-card" style="border-color:var(--crit)">
+        <div class="value" style="color:var(--crit)">${Math.round(result.killAtkProb * 100)}%</div>
+        <div class="result-label">Chance Killed</div>
+      </div>
+    </div>`;
+
+  document.getElementById('results-charts-panel').style.display = '';
+  document.getElementById('results-content').innerHTML = `
+    <div class="chart-section-label">Damage dealt to defender</div>
+    <div class="chart-wrap"><canvas id="dmg-chart"></canvas></div>
+    <div class="chart-section-label">Probability of dealing at least X damage</div>
+    <div class="chart-wrap"><canvas id="fight-survival-chart"></canvas></div>
+    <div class="chart-section-label">Damage taken by attacker</div>
+    <div class="chart-wrap"><canvas id="dmg-taken-chart"></canvas></div>`;
+
+  chartInstance           = renderBarChart(result.dDist, defW, 'dmg-chart');
+  fightTakenChartInstance = renderBarChart(result.aDist, atkW, 'dmg-taken-chart', '#8b3a3a', 'rgba(139,58,58,0.7)');
+
+  const sc = document.getElementById('fight-survival-chart');
+  if (sc) {
+    const dist = result.dDist;
+    let maxIdx = dist.length - 1;
+    while (maxIdx > 0 && dist[maxIdx] < 0.001) maxIdx--;
+    const labels = Array.from({ length: maxIdx + 1 }, (_, i) => i);
+    const survival = labels.map(k => {
+      let s = 0;
+      for (let i = k; i < dist.length; i++) s += dist[i];
+      return +(Math.min(s, 1) * 100).toFixed(1);
+    });
+    const ptColors = labels.map(i => i >= defW ? '#c05050' : '#c8a951');
+    fightSurvivalChartInstance = new Chart(sc, {
+      type: 'line',
+      data: { labels, datasets: [{ label: 'P(≥ X damage) %', data: survival,
+        borderColor: '#c8a951', backgroundColor: 'rgba(200,169,81,0.08)',
+        pointBackgroundColor: ptColors, pointBorderColor: ptColors,
+        pointRadius: 4, pointHoverRadius: 6, fill: true, tension: 0.1 }] },
+      options: {
+        responsive: true, maintainAspectRatio: false,
+        plugins: { legend: { display: false }, tooltip: { callbacks: {
+          label: ctx => `${ctx.parsed.y.toFixed(1)}% chance`,
+          title: ctx => `At least ${ctx[0].label} damage`
+        }}},
+        scales: {
+          x: { ticks: { color: '#888', font: { size: 11 } }, grid: { color: '#2a2a2a' },
+               title: { display: true, text: 'Minimum damage', color: '#888', font: { size: 11 } } },
+          y: { ticks: { color: '#888', font: { size: 11 }, callback: v => v + '%' },
+               grid: { color: '#2a2a2a' }, beginAtZero: true, max: 100 }
+        }
+      }
+    });
+  }
+}
+
+function renderBarChart(distribution, killThreshold, canvasId, hitColor, hitBg) {
+  hitColor = hitColor || '#c8a951'; hitBg = hitBg || 'rgba(200,169,81,0.7)';
+  const canvas = document.getElementById(canvasId);
+  if (!canvas) return null;
+  let maxIdx = distribution.length - 1;
+  while (maxIdx > 0 && distribution[maxIdx] < 0.001) maxIdx--;
+  const labels = Array.from({ length: maxIdx + 1 }, (_, i) => i);
+  const data    = labels.map(i => +(distribution[i] * 100).toFixed(1));
+  const colors  = labels.map(i => i >= killThreshold ? 'rgba(192,80,80,0.8)' : hitBg);
+  const borders = labels.map(i => i >= killThreshold ? '#c05050' : hitColor);
+  return new Chart(canvas, {
+    type: 'bar',
+    data: { labels, datasets: [{ label: 'Probability (%)', data, backgroundColor: colors, borderColor: borders, borderWidth: 1 }] },
+    options: {
+      responsive: true, maintainAspectRatio: false,
+      plugins: { legend: { display: false }, tooltip: { callbacks: {
+        label: ctx => `${ctx.parsed.y.toFixed(1)}%`,
+        title: ctx => `Exactly ${ctx[0].label} damage`
+      }}},
+      scales: {
+        x: { ticks: { color: '#888', font: { size: 11 } }, grid: { color: '#2a2a2a' },
+             title: { display: true, text: 'Damage', color: '#888', font: { size: 11 } } },
+        y: { ticks: { color: '#888', font: { size: 11 }, callback: v => v + '%' },
+             grid: { color: '#2a2a2a' }, beginAtZero: true }
+      }
+    }
+  });
 }
 
 let survivalChartInstance = null;
@@ -1083,46 +1472,71 @@ function renderChart(distribution, killThreshold) {
 // MAIN RECALCULATE
 // ─────────────────────────────────────────────────
 
+function clearResults() {
+  document.getElementById('results-summary').innerHTML =
+    '<div class="empty-state">Select an attacker weapon and a defender operative to see results.</div>';
+  document.getElementById('results-charts-panel').style.display = 'none';
+  document.getElementById('results-content').innerHTML = '';
+  if (chartInstance)             { chartInstance.destroy();             chartInstance = null; }
+  if (survivalChartInstance)     { survivalChartInstance.destroy();     survivalChartInstance = null; }
+  if (fightTakenChartInstance)   { fightTakenChartInstance.destroy();   fightTakenChartInstance = null; }
+  if (fightSurvivalChartInstance){ fightSurvivalChartInstance.destroy(); fightSurvivalChartInstance = null; }
+}
+
 function recalculate() {
   const w   = state.atkWeapon ? getWeapon(state.atkTeam, state.atkOp, state.atkWeapon) : null;
   const def = state.defOp     ? getOp(state.defTeam, state.defOp) : null;
+  if (!w || !def) { clearResults(); return; }
 
-  if (!w || !def) {
-    document.getElementById('results-summary').innerHTML =
-      '<div class="empty-state">Select an attacker weapon and a defender operative to see results.</div>';
-    document.getElementById('results-charts-panel').style.display = 'none';
-    document.getElementById('results-content').innerHTML = '';
-    if (chartInstance) { chartInstance.destroy(); chartInstance = null; }
-    if (survivalChartInstance) { survivalChartInstance.destroy(); survivalChartInstance = null; }
-    return;
+  const isMelee = w.type !== 'ranged';
+
+  if (isMelee) {
+    const dw = state.defWeapon ? getWeapon(state.defTeam, state.defOp, state.defWeapon) : null;
+    if (!dw) {
+      clearResults();
+      document.getElementById('results-summary').innerHTML =
+        '<div class="empty-state">Select a defender melee weapon to calculate fight.</div>';
+      return;
+    }
+    const atk = getOp(state.atkTeam, state.atkOp);
+    const rules    = collectActiveRules();
+    const defRules = [...(dw.rules || [])];
+    state.defManualRules.forEach(r => { if (!defRules.includes(r)) defRules.push(r); });
+    const config = {
+      a: w.a, skill: w.skill, d: w.d, critD: w.crit_d, rules,
+      defA: dw.a, defSkill: dw.skill, defD: dw.d, defCritD: dw.crit_d, defRules,
+      atkStrat: state.atkFightStrat, defStrat: state.defFightStrat,
+      atkMultiBlock: state.atkMultiBlock, defMultiBlock: state.defMultiBlock,
+      defW: def.w, atkW: atk ? atk.w : 12
+    };
+    const result = computeFight(config);
+    renderFightResults(result, def.w, atk ? atk.w : 12);
+  } else {
+    const rules   = collectActiveRules();
+    const defMods = collectDefModifiers();
+    const mwRule  = rules.find(r => r.startsWith('mw'));
+    const mwVal   = mwRule ? parseInt(mwRule.replace('mw', '')) : 0;
+    const config = {
+      a:              w.a,
+      skill:          rules.includes('torrent') ? 2 : w.skill,
+      d:              w.d,
+      critD:          w.crit_d,
+      rules,
+      df:             def.df + defMods.addDefDie,
+      sv:             def.sv,
+      coverSaves:     state.coverSaves,
+      obscured:       state.obscured,
+      severe:         rules.includes('severe'),
+      mwVal,
+      accurate:       state.accurate,
+      defenderW:      def.w,
+      rerollDefDie:   defMods.rerollDefDie,
+      jasNormal:      defMods.jasNormal,
+      jasCrit:        defMods.jasCrit,
+    };
+    const result = computeAttack(config);
+    renderResults(result, def.w);
   }
-
-  const rules   = collectActiveRules();
-  const defMods = collectDefModifiers();
-  const mwRule  = rules.find(r => r.startsWith('mw'));
-  const mwVal   = mwRule ? parseInt(mwRule.replace('mw', '')) : 0;
-
-  const config = {
-    a:              w.a,
-    skill:          rules.includes('torrent') ? 2 : w.skill,
-    d:              w.d,
-    critD:          w.crit_d,
-    rules,
-    df:             def.df + defMods.addDefDie,
-    sv:             def.sv,
-    coverSaves:     w.type === 'ranged' ? state.coverSaves : 0,
-    obscured:       state.obscured,
-    severe:         rules.includes('severe'),
-    mwVal,
-    accurate:       state.accurate,
-    defenderW:      def.w,
-    rerollDefDie:   defMods.rerollDefDie,
-    jasNormal:      defMods.jasNormal,
-    jasCrit:        defMods.jasCrit,
-  };
-
-  const result = computeAttack(config);
-  renderResults(result, def.w);
 }
 
 // ─────────────────────────────────────────────────
@@ -1160,9 +1574,11 @@ function onAtkWeaponChange() {
   state.manualRules.clear();
   renderWeaponInfo(w); renderWeaponRules(w); renderManualToggles(w);
   const isMelee = w && w.type !== 'ranged';
-  const coverSlider = document.getElementById('cover-slider');
-  coverSlider.disabled = isMelee;
-  coverSlider.style.opacity = isMelee ? '0.35' : '1';
+  document.getElementById('atk-fight-controls').style.display  = isMelee ? '' : 'none';
+  document.getElementById('def-fight-controls').style.display   = isMelee ? '' : 'none';
+  document.getElementById('ranged-def-controls').style.display  = isMelee ? 'none' : '';
+  // Repopulate defender weapon list with only melee weapons when fight mode
+  if (isMelee) populateDefWeaponSelect();
   recalculate();
 }
 
@@ -1176,9 +1592,31 @@ function onDefTeamChange() {
 
 function onDefOpChange() {
   state.defOp = document.getElementById('def-operative').value || null;
+  state.defWeapon = null;
+  state.defManualRules.clear();
   const op = state.defOp ? getOp(state.defTeam, state.defOp) : null;
   renderDefStats(op);
+  renderDefWeaponInfo(null); renderDefWeaponRules(null); renderDefManualToggles(null);
+  populateDefWeaponSelect();
   recalculate();
+}
+
+function populateDefWeaponSelect() {
+  const sel = document.getElementById('def-weapon');
+  const prev = state.defWeapon;
+  sel.innerHTML = '<option value="">— Select weapon —</option>';
+  state.defWeapon = null;
+  const op = state.defOp ? getOp(state.defTeam, state.defOp) : null;
+  if (!op) return;
+  op.weapons.filter(w => w.type !== 'ranged').forEach(w => {
+    const o = document.createElement('option');
+    o.value = w.id; o.textContent = w.name;
+    sel.appendChild(o);
+  });
+  if (prev && [...sel.options].some(o => o.value === prev)) {
+    sel.value = prev;
+    state.defWeapon = prev;
+  }
 }
 
 function wireCheckbox(id, stateKey, lblId) {
@@ -1214,6 +1652,36 @@ function init() {
   document.getElementById('accurate-slider').addEventListener('input', e => {
     state.accurate = parseInt(e.target.value);
     document.getElementById('accurate-label').textContent = state.accurate;
+    recalculate();
+  });
+
+  document.getElementById('def-weapon').addEventListener('change', e => {
+    state.defWeapon = e.target.value || null;
+    state.defManualRules.clear();
+    const dw = state.defWeapon ? getWeapon(state.defTeam, state.defOp, state.defWeapon) : null;
+    renderDefWeaponInfo(dw); renderDefWeaponRules(dw); renderDefManualToggles(dw);
+    recalculate();
+  });
+
+  document.getElementById('atk-fight-strat').addEventListener('change', e => {
+    state.atkFightStrat = e.target.value;
+    recalculate();
+  });
+  document.getElementById('def-fight-strat').addEventListener('change', e => {
+    state.defFightStrat = e.target.value;
+    recalculate();
+  });
+
+  const atkMb = document.getElementById('atk-multiblock');
+  atkMb.addEventListener('change', () => {
+    state.atkMultiBlock = atkMb.checked;
+    document.getElementById('lbl-atk-multiblock').className = 'toggle-label' + (atkMb.checked ? ' active' : '');
+    recalculate();
+  });
+  const defMb = document.getElementById('def-multiblock');
+  defMb.addEventListener('change', () => {
+    state.defMultiBlock = defMb.checked;
+    document.getElementById('lbl-def-multiblock').className = 'toggle-label defender-toggle' + (defMb.checked ? ' active' : '');
     recalculate();
   });
 }

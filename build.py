@@ -1,5 +1,5 @@
 """
-Kill Team Calculator — PDF build script (KT 2024 Void War format)
+Kill Team Calculator — PDF build script (KT 2024)
 Usage:
   python build.py                          # parse all PDFs in source/, write index.html
   python build.py --pdf source/team.pdf    # parse a single PDF, write index.html
